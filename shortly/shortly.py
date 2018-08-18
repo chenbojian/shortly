@@ -13,14 +13,25 @@ class Shortly(object):
     def __init__(self, config):
         self.redis = redis.Redis(config['redis_host'], config['redis_port'])
         template_path = os.path.join(os.path.dirname(__file__), 'templates')
-        self.jinja_env = Environment(laoder=FileSystemLoader(template_path), autoescape=True)
+        self.jinja_env = Environment(loader=FileSystemLoader(template_path), autoescape=True)
+        
+        self.url_map = Map([
+            Rule('/', endpoint='new_url'),
+            Rule('/<short_id>', endpoint='follow_short_link'),
+            Rule('/<short_id>+', endpoint='short_link_details')
+        ])
 
     def render_template(self, template_name, **context):
         t = self.jinja_env.get_template(template_name)
         return Response(t.render(context), mimetype='text/html')
 
     def dispatch_request(self, request):
-        return Response('Hello World!')
+        adapter = self.url_map.bind_to_environ(request.environ)
+        try:
+            endpoint, values = adapter.match()
+            return getattr(self, 'on_' + endpoint)(request, **values)
+        except (HTTPException, e):
+            return e
 
     def wsgi_app(self, environ, start_response):
         request = Request(environ)
